@@ -5,7 +5,8 @@ __pip_deps__ = ["g4f"]
 import asyncio
 import random
 import logging
-import g4f # Импортируем только базовый пакет g4f
+import g4f
+# from g4f.Provider import Liaobots, FreeGpt, Bing # Убрано: g4f будет автоматически выбирать провайдера
 
 from telethon import events
 from telethon.tl.patched import Message
@@ -24,11 +25,16 @@ class G4fPersonaMod(loader.Module):
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "ai_model",
-                "gpt-4", # Установлено на gpt-4 по умолчанию
+                "gpt-4", # Изменено на GPT-4 по умолчанию
                 lambda: self.strings("ai_model_h"),
                 validator=loader.validators.String(),
             ),
-            # Убран параметр ai_provider, т.к. теперь полагаемся на автовыбор g4f
+            loader.ConfigValue(
+                "ai_provider",
+                "", # Оставлено пустым для автовыбора
+                lambda: self.strings("ai_provider_h"),
+                validator=loader.validators.String(),
+            ),
             loader.ConfigValue(
                 "persona_name",
                 "крейк",
@@ -66,7 +72,7 @@ class G4fPersonaMod(loader.Module):
             ),
             loader.ConfigValue(
                 "ai_timeout",
-                90, # Увеличим таймаут для GPT-4, т.к. он может быть медленнее
+                60,
                 lambda: self.strings("ai_timeout_h"),
                 validator=loader.validators.Integer(minimum=10, maximum=300),
             ),
@@ -83,11 +89,12 @@ class G4fPersonaMod(loader.Module):
             events.NewMessage(incoming=True, outgoing=False)
         )
         
-        # g4f.debug.logging = True # Можно включить для отладки, если есть проблемы
+        # g4f.debug.logging = True # Включите для отладки, если нужны логи g4f
 
     strings = {
         "name": "G4fPersona",
-        "ai_model_h": "Модель AI для использования (по умолчанию 'gpt-4'). Может быть нестабильна через бесплатные провайдеры.",
+        "ai_model_h": "Модель AI для использования (например, 'gpt-3.5-turbo', 'gpt-4'). Проверяйте доступные модели в документации g4f.",
+        "ai_provider_h": "Опционально: Имя конкретного провайдера g4f (например, 'Liaobots', 'Bing'). Оставьте пустым для автовыбора. Убедитесь, что провайдер поддерживает выбранную модель.",
         "persona_name_h": "Имя, от которого будет отвечать AI (например, 'крейк')",
         "persona_instructions_h": "Инструкции для AI по ответам. Используйте {persona_name} для подстановки имени.",
         "history_limit_h": "Количество последних сообщений для контекста (от 5 до 100).",
@@ -97,16 +104,18 @@ class G4fPersonaMod(loader.Module):
         "ii_on": "🎭 Режим G4fPersona включен в этом чате. Я буду отвечать как {}.",
         "ii_off": "🎭 Режим G4fPersona выключен.",
         "ii_deleted_confirm": "```Команда .ii удалена.```",
-        # "processing": "```думаю...```", # Убрано
+        # "processing": "```думаю...```", # Убрано: теперь не отправляем промежуточное сообщение
+        "error_provider": "❌ Ошибка: Указанный провайдер '{}' не найден или недействителен. Пожалуйста, проверьте имя провайдера или оставьте поле пустым для автовыбора.",
         "error_processing": "❌ Произошла ошибка при обработке запроса: {}",
-        "error_model_not_found": "❌ Ошибка: Модель '{ai_model}' не найдена или недоступна у бесплатных провайдеров. Попробуйте другую модель или подождите.",
         "error_timeout": "❌ Не удалось получить ответ от AI за отведенное время ({} сек.). Попробуйте снова.",
         "not_text": "G4fPersona отвечает только на текстовые сообщения.",
+        "not_supported": "❌ Выбранная модель '{}' не поддерживается указанным провайдером '{}'. Попробуйте другой провайдер или модель."
     }
 
     strings_ru = {
         "name": "G4fPersona",
-        "ai_model_h": "Модель AI для использования (по умолчанию 'gpt-4'). Может быть нестабильна через бесплатные провайдеры.",
+        "ai_model_h": "Модель AI для использования (например, 'gpt-3.5-turbo', 'gpt-4'). Проверяйте доступные модели в документации g4f.",
+        "ai_provider_h": "Опционально: Имя конкретного провайдера g4f (например, 'Liaobots', 'Bing'). Оставьте пустым для автовыбора. Убедитесь, что провайдер поддерживает выбранную модель.",
         "persona_name_h": "Имя, от которого будет отвечать AI (например, 'крейк')",
         "persona_instructions_h": "Инструкции для AI по ответам. Используйте {persona_name} для подстановки имени.",
         "history_limit_h": "Количество последних сообщений для контекста (от 5 до 100).",
@@ -117,10 +126,11 @@ class G4fPersonaMod(loader.Module):
         "ii_off": "🎭 Режим G4fPersona выключен.",
         "ii_deleted_confirm": "```Команда .ii удалена.```",
         # "processing": "```думаю...```", # Убрано
+        "error_provider": "❌ Ошибка: Указанный провайдер '{}' не найден или недействителен. Пожалуйста, проверьте имя провайдера или оставьте поле пустым для автовыбора.",
         "error_processing": "❌ Произошла ошибка при обработке запроса: {}",
-        "error_model_not_found": "❌ Ошибка: Модель '{ai_model}' не найдена или недоступна у бесплатных провайдеров. Попробуйте другую модель или подождите.",
         "error_timeout": "❌ Не удалось получить ответ от AI за отведенное время ({} сек.). Попробуйте снова.",
         "not_text": "G4fPersona отвечает только на текстовые сообщения.",
+        "not_supported": "❌ Выбранная модель '{}' не поддерживается указанным провайдером '{}'. Попробуйте другой провайдер или модель."
     }
 
     @loader.command("ii")
@@ -135,14 +145,13 @@ class G4fPersonaMod(loader.Module):
         await asyncio.sleep(2) 
         await temp_confirm_message.delete()
 
-
         if self.active_chats.get(chat_id, False):
             self.active_chats[chat_id] = False
-            await utils.answer(m, self.strings("ii_off"))
+            await m.reply(self.strings("ii_off")) # Используем reply для ответа после удаления
         else:
             self.active_chats[chat_id] = True
-            await utils.answer(m, self.strings("ii_on").format(persona_name))
-
+            await m.reply(self.strings("ii_on").format(persona_name)) # Используем reply
+            
         self.db.set("G4fPersonaMod", "active_chats", self.active_chats)
 
     async def on_new_message(self, event):
@@ -163,8 +172,7 @@ class G4fPersonaMod(loader.Module):
             return
 
         if not m.text:
-            # Отвечаем на нетекстовые сообщения, но без попытки отправки в AI
-            await utils.answer(m, self.strings("not_text"))
+            await m.reply(self.strings("not_text")) # Используем reply
             return
 
         persona_name = self.config["persona_name"]
@@ -173,7 +181,23 @@ class G4fPersonaMod(loader.Module):
         min_delay = self.config["min_delay"]
         max_delay = self.config["max_delay"]
         ai_model = self.config["ai_model"]
+        ai_provider_name = self.config["ai_provider"]
         ai_timeout = self.config["ai_timeout"]
+
+        provider_obj = None
+        if ai_provider_name:
+            provider_obj = getattr(g4f.Provider, ai_provider_name, None)
+            if not provider_obj:
+                logger.error(f"Invalid g4f provider specified: {ai_provider_name}")
+                await m.reply(self.strings("error_provider").format(ai_provider_name)) # Используем reply
+                return
+            # Проверки поддержки модели для провайдера
+            if ai_model == "gpt-4" and not getattr(provider_obj, 'supports_gpt_4', False):
+                 await m.reply(self.strings("not_supported").format(ai_model, ai_provider_name)) # Используем reply
+                 return
+            elif ai_model == "gpt-3.5-turbo" and not getattr(provider_obj, 'supports_gpt_35_turbo', False):
+                 await m.reply(self.strings("not_supported").format(ai_model, ai_provider_name)) # Используем reply
+                 return
 
         try:
             chat_messages = []
@@ -194,17 +218,20 @@ class G4fPersonaMod(loader.Module):
 
             messages_for_ai.append({"role": "user", "content": m.text})
 
-            # Случайная задержка перед запросом к AI
+            # Случайная задержка перед запросом, чтобы имитировать "думает"
             delay = random.uniform(min_delay, max_delay)
             await asyncio.sleep(delay)
 
             full_response_text = ""
             try:
+                # Отправляем запрос в g4f
+                # g4f.check_version = False # Опционально: отключить проверку версии g4f для ускорения
+                
                 response_generator = g4f.ChatCompletion.create_async(
                     model=ai_model,
                     messages=messages_for_ai,
-                    # provider=None - g4f по умолчанию сам выберет провайдера
-                    stream=True,
+                    provider=provider_obj,
+                    stream=True, # Оставляем стриминг, так как это способ получения ответа от g4f
                     timeout=ai_timeout
                 )
                 
@@ -213,22 +240,19 @@ class G4fPersonaMod(loader.Module):
                         full_response_text += chunk
                 
                 if full_response_text:
-                    # Отправляем ответ сразу, без редактирования "думаю..."
                     await m.reply(full_response_text) # Отвечаем на сообщение пользователя
                 else:
-                    logger.warning(f"G4fPersonaMod: Received empty response for model {ai_model}")
                     await m.reply(self.strings("error_processing").format("Пустой ответ от AI."))
 
-            except g4f.errors.ModelNotFoundError:
-                logger.error(f"G4fPersonaMod: ModelNotFound error for model: {ai_model}")
-                await m.reply(self.strings("error_model_not_found").format(ai_model=ai_model))
             except asyncio.TimeoutError:
-                logger.error(f"G4fPersonaMod: Timeout error for model: {ai_model}")
                 await m.reply(self.strings("error_timeout").format(ai_timeout))
+            except g4f.errors.ModelNotFoundError as e: # Отдельная обработка ошибки "Model not found"
+                logger.error(f"G4F Model not found error: {e}", exc_info=True)
+                await m.reply(self.strings("error_processing").format(f"Модель {ai_model} не найдена. Попробуйте другую модель или провайдера."))
             except Exception as e:
-                logger.error(f"G4fPersonaMod: General error getting response from g4f: {e}", exc_info=True)
+                logger.error(f"Error getting response from g4f: {e}", exc_info=True)
                 await m.reply(self.strings("error_processing").format(e))
 
         except Exception as e:
-            logger.error(f"G4fPersonaMod: Error in listener main block: {e}", exc_info=True)
+            logger.error(f"Error in G4fPersonaMod listener: {e}", exc_info=True)
             await m.reply(self.strings("error_processing").format(e))
