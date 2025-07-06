@@ -1,6 +1,7 @@
 
+
 # requires: google-genai
-# meta developer: @kreik_dev_mods # Можете изменить на свой никкк
+# meta developer: @kreik_dev_mods # Можете изменить на свой ник
 
 import asyncio
 import logging
@@ -18,13 +19,13 @@ logger = logging.getLogger(__name__)
 # --- КОНФИГУРАЦИЯ ---
 # Вставьте сюда свой API-ключ Gemini
 # ОЧЕНЬ ВАЖНО: Замените "ВАШ_API_КЛЮЧ_GEMINI" на ваш реальный ключ в кавычках!
-GEMINI_API_KEY = "ВАШ_API_КЛЮЧ_GEMINI"
+GEMINI_API_KEY = "AIzaSyBhXRfIJ6Z79HKHjQiyjo-FQTR65Cxslkc"
 
 # Ваш никнейм, который будет эмулировать бот
 MY_NICKNAME = "крейк"
 
 # Модель Gemini
-GEMINI_API_KEY = "AIzaSyBhXRfIJ6Z79HKHjQiyjo-FQTR65Cxslkc"
+GEMINI_MODEL = "gemini-2.5-flash-lite-preview-06-17"
 
 # Максимальное количество сообщений в истории диалога для Gemini
 MAX_HISTORY_MESSAGES = 30
