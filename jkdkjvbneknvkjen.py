@@ -6,7 +6,6 @@ import asyncio
 import random
 import logging
 import g4f 
-from g4f.Provider import Liaobots, FreeGpt, Bing # Примеры провайдеров, можете добавить другие из документации g4f
 
 from telethon import events
 from telethon.tl.patched import Message
