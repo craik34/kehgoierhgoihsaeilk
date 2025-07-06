@@ -31,7 +31,7 @@ class Gpt4PersonaMemoryMod(loader.Module):
             loader.ConfigValue("min_delay", 1, lambda: "Мин. задержка ответа, сек."),
             loader.ConfigValue("max_delay", 3, lambda: "Макс. задержка ответа, сек."),
             loader.ConfigValue("system_prompt",
-                               "Ты - крейк, пользователь в Телеграм. Тебе 18 лет (упоминай свой возраст только если спросят). Отвечай коротко без занаков препинания используй маты отвечай с маленькой буквы, как обычный пользователь в Телеграм.Можешь писать маты и быть грубым если это необходимо.",
+                               "Ты - крейк, пользователь в Телеграм. Тебе 18 лет (упоминай свой возраст только если спросят). Отвечай коротко без занаков препинания используй маты отвечай с маленькой буквы, как обычный пользователь в Телеграм. Можешь писать маты и быть грубым если это необходимо.",
                                lambda: "Системный промпт для AI-персоны. Определяет её характер и стиль ответов."),
         )
         self.active_chats = {}
@@ -47,13 +47,28 @@ class Gpt4PersonaMemoryMod(loader.Module):
     @loader.command("ii")
     async def toggle_ai(self, m: Message):
         chat_id = str(utils.get_chat_id(m))
-        await m.delete()
+        
+        # Определяем сообщение, которое будет отправлено
+        message_to_send = ""
         if self.active_chats.get(chat_id, False):
             self.active_chats[chat_id] = False
-            await utils.answer(m, self.strings("ii_off"))
+            message_to_send = self.strings("ii_off")
         else:
             self.active_chats[chat_id] = True
-            await utils.answer(m, self.strings("ii_on"))
+            message_to_send = self.strings("ii_on")
+        
+        # Сначала отправляем ответ
+        await utils.answer(m, message_to_send)
+        
+        # Теперь удаляем исходное сообщение команды
+        try:
+            await m.delete()
+        except Exception as e:
+            logger.warning(f"Failed to delete command message: {e}")
+            # Можно отправить сообщение о том, что не удалось удалить,
+            # но обычно это не критично для работы модуля.
+            # await utils.answer(m, self.strings("ii_deleted")) # Или что-то подобное
+
         self.db.set("Gpt4PersonaMemoryMod", "active_chats", self.active_chats)
 
     async def on_new_message(self, event):
@@ -68,7 +83,7 @@ class Gpt4PersonaMemoryMod(loader.Module):
         if m.sender_id == me.id:
             return
 
-        persona_name = self.config["persona_name"]
+        persona_name = self.config["persona_name"] # Эта переменная не используется, но оставлена на случай если понадобится
         g4f_model = self.config["g4f_model"]
         history_depth = self.config["history_depth"]
         min_delay = self.config["min_delay"]
@@ -88,7 +103,8 @@ class Gpt4PersonaMemoryMod(loader.Module):
         messages_for_ai = [{"role": "system", "content": system_prompt}] + self.chat_histories[chat_id]
 
         # Отображаем индикатор генерации ответа
-        generating_msg = await utils.answer(m, self.strings("generating_response"))
+        # Используем m.reply() для нового сообщения, чтобы не зависеть от редактирования исходного
+        generating_msg = await m.reply(self.strings("generating_response"))
         await asyncio.sleep(random.uniform(min_delay, max_delay)) # Небольшая задержка для имитации "живого" ответа
 
         try:
@@ -112,13 +128,13 @@ class Gpt4PersonaMemoryMod(loader.Module):
             self.chat_histories[chat_id].append({"role": "assistant", "content": response_text})
             
             # Редактируем сообщение с индикатором на фактический ответ
-            await utils.answer(generating_msg, response_text)
+            await generating_msg.edit(response_text) # Используем .edit() на сообщении-индикаторе
 
         except asyncio.TimeoutError:
-            await utils.answer(generating_msg, self.strings("timeout"))
+            await generating_msg.edit(self.strings("timeout"))
         except Exception as e:
             logger.error("Gpt4PersonaMemory Error", exc_info=True)
-            await utils.answer(generating_msg, self.strings("error").format(str(e)))
+            await generating_msg.edit(self.strings("error").format(str(e)))
 
         # Сохраняем обновленную историю в базе данных
         self.db.set("Gpt4PersonaMemoryMod", "chat_histories", self.chat_histories)
