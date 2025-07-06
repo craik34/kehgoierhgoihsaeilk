@@ -1,13 +1,10 @@
 
-
-
-# meta pic: https://img.icons8.com/?size=512&id=vGzNq8X93z82&format=png
-# meta developer: @modwini (по запросу пользователя)
-
 import asyncio
 import random
 import logging
 from hikka import loader, utils
+# !!! ВАЖНО: Добавьте импорт events из telethon !!!
+from telethon import events
 from telethon.tl.patched import Message
 from google import genai
 from google.genai import types
@@ -62,6 +59,14 @@ class GeminiPersonaMod(loader.Module):
         self.db = db
         self.active_chats = self.db.get("GeminiPersonaMod", "active_chats", {})
         self._init_gemini_client()
+
+        # --- ВАЖНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ ---
+        # Регистрируем обработчик событий для новых входящих сообщений
+        self.client.add_event_handler(
+            self.on_new_message,
+            events.NewMessage(incoming=True, outgoing=False) # incoming=True, outgoing=False - чтобы слушать только чужие сообщения
+        )
+        # --- КОНЕЦ ВАЖНОГО ИЗМЕНЕНИЯ ---
 
     def _init_gemini_client(self):
         """Инициализирует клиент Gemini API."""
@@ -123,7 +128,9 @@ class GeminiPersonaMod(loader.Module):
 
         # Удаляем сообщение с командой сразу
         await m.delete()
+        # Отправляем подтверждение об удалении
         await utils.answer(m, self.strings("ii_deleted"))
+
 
         if self.active_chats.get(chat_id, False):
             self.active_chats[chat_id] = False
@@ -137,14 +144,25 @@ class GeminiPersonaMod(loader.Module):
 
         self.db.set("GeminiPersonaMod", "active_chats", self.active_chats)
 
-    @loader.listener(incoming=True, outgoing=False) # Слушаем только входящие сообщения от других пользователей
-    async def on_new_message(self, m: Message):
+    # --- ВАЖНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ ---
+    # Удалите @loader.listener(incoming=True, outgoing=False)
+    # async def on_new_message(self, m: Message):
+    async def on_new_message(self, event): # Теперь этот метод принимает объект event
+        m = event.message # Получаем объект Message из event
+    # --- КОНЕЦ ВАЖНОГО ИЗМЕНЕНИЯ ---
+
         if not m.is_private and not m.is_group:
             return
 
         chat_id = utils.get_chat_id(m)
         if not self.active_chats.get(chat_id, False):
             return  # Режим не активен в этом чате
+
+        # Игнорируем сообщения от самого бота (вашего юзербота Hikka)
+        # Получаем ID вашего аккаунта (владельца юзербота)
+        me = await self.client.get_me()
+        if m.sender_id == me.id:
+            return
 
         if m.text and m.text.startswith(".ii"):
             return  # Игнорируем саму команду .ii, чтобы избежать петли
@@ -166,13 +184,19 @@ class GeminiPersonaMod(loader.Module):
         try:
             # Получаем историю чата для контекста
             history_messages = []
+            # Используем messages.getHistory, т.к. iter_messages может быть долгим на больших чатах
+            # и может быть не самым эффективным для 'последних X' сообщений.
+            # Но для простоты и прямолинейности iter_messages тоже работает.
+            # Если возникнут проблемы с производительностью, можно пересмотреть этот блок.
             async for msg in self.client.iter_messages(chat_id, limit=history_limit):
                 if msg.text:
                     # Определяем имя отправителя
-                    sender_name = persona_name if msg.sender_id == (await self.client.get_me()).id else (msg.sender.first_name or msg.sender.username or f"User_{msg.sender_id}")
+                    sender_name = persona_name if msg.sender_id == me.id else (msg.sender.first_name or msg.sender.username or f"Пользователь_{msg.sender_id}")
                     history_messages.append(f"{sender_name}: {msg.text}")
             
             # Переворачиваем историю, чтобы старые сообщения были в начале
+            # Telethon.iter_messages возвращает сообщения от новых к старым.
+            # Для контекста AI нам нужна хронологическая последовательность (старые -> новые).
             history_string = "\n".join(reversed(history_messages))
 
             prompt = (
@@ -202,6 +226,7 @@ class GeminiPersonaMod(loader.Module):
                 response_text = response.text
 
                 # Редактируем сообщение "думаю..." на ответ от AI
+                # utils.answer автоматически редактирует переданное сообщение
                 await utils.answer(thinking_message, response_text)
 
             except asyncio.TimeoutError:
@@ -209,14 +234,6 @@ class GeminiPersonaMod(loader.Module):
             except Exception as e:
                 logger.error(f"Error getting response from Gemini: {e}", exc_info=True)
                 await utils.answer(thinking_message, self.strings("error_processing").format(e))
-            finally:
-                # Удаляем "думаю..." сообщение, если оно не было отредактировано
-                try:
-                    # Если thinking_message было успешно отредактировано, то delete() вызовет ошибку
-                    # "Message not modified". Это нормально, игнорируем ее.
-                    await thinking_message.delete()
-                except Exception:
-                    pass
 
         except Exception as e:
             logger.error(f"Error in GeminiPersonaMod listener: {e}", exc_info=True)
