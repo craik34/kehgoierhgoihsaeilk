@@ -1,7 +1,6 @@
 
-
-# requires: google-genai ааааа
-# meta developer: @kreik_dev_mods # Можете изменить на свой ник
+# requires: google-genai
+# meta developer: @kreik_dev_mods # Можете изменить на свой никкк
 
 import asyncio
 import logging
@@ -19,13 +18,13 @@ logger = logging.getLogger(__name__)
 # --- КОНФИГУРАЦИЯ ---
 # Вставьте сюда свой API-ключ Gemini
 # ОЧЕНЬ ВАЖНО: Замените "ВАШ_API_КЛЮЧ_GEMINI" на ваш реальный ключ в кавычках!
-GEMINI_API_KEY = "AIzaSyBhXRfIJ6Z79HKHjQiyjo-FQTR65Cxslkc"
+GEMINI_API_KEY = "ВАШ_API_КЛЮЧ_GEMINI"
 
 # Ваш никнейм, который будет эмулировать бот
 MY_NICKNAME = "крейк"
 
 # Модель Gemini
-GEMINI_MODEL = "gemini-2.5-flash-lite-preview-06-17"
+GEMINI_API_KEY = "AIzaSyBhXRfIJ6Z79HKHjQiyjo-FQTR65Cxslkc"
 
 # Максимальное количество сообщений в истории диалога для Gemini
 MAX_HISTORY_MESSAGES = 30
@@ -40,9 +39,8 @@ class GeminiAutoResponderMod(loader.Module):
     """
 
     def __init__(self):
-        self.name = "Gemini Автоответчик"
+        self.name = "Gemini Автоответчик" # Это имя модуля для self.db.set()
         # Hikka САМА инициализирует self.db после __init__
-        # Поэтому мы не должны ее здесь устанавливать в None или пытаться получить
         
         # Словарь для хранения истории диалогов по chat_id
         # Используем collections.deque для автоматического ограничения истории
@@ -87,9 +85,9 @@ class GeminiAutoResponderMod(loader.Module):
         await message.delete()
 
         # Получаем текущее состояние и переключаем его
-        # self.db доступен здесь
-        is_active = self.db.get("gemini_active", False)
-        self.db.set("gemini_active", not is_active)
+        # self.db доступен здесь. Исправленный вызов set():
+        is_active = self.db.get(self.name, "gemini_active", False)
+        self.db.set(self.name, "gemini_active", not is_active)
 
         status_text = "включен" if not is_active else "выключен"
         
@@ -104,8 +102,8 @@ class GeminiAutoResponderMod(loader.Module):
         Наблюдатель для входящих текстовых сообщений.
         """
         # Проверяем, активен ли автоответчик
-        # self.db доступен здесь
-        if not self.db.get("gemini_active", False):
+        # self.db доступен здесь. Исправленный вызов get():
+        if not self.db.get(self.name, "gemini_active", False):
             return
 
         # Игнорируем нетекстовые сообщения
