@@ -1,44 +1,22 @@
 # meta developer: @modwini
-#
-# Полностью переработанный модуль для ответов от лица AI-персоны
-# с использованием g4f (GPT-4 Free).
-# Устранены все известные ошибки и добавлена отказоустойчивость.
-
 import asyncio
 import random
 import logging
-import g4f
-
 from hikka import loader, utils
 from telethon import events
 from telethon.tl.patched import Message
 
-# Настройка логирования для g4f, чтобы не засорять консоль
-g4f.debug.logging = False
+# Импортируем g4f
+import g4f
 
 logger = logging.getLogger(__name__)
 
 @loader.tds
 class Gpt4PersonaMod(loader.Module):
     """
-    Отвечает в чате от имени AI-персоны, используя g4f (gpt4free).
+    Модуль для Hikka, который позволяет пользователю отвечать в чате от имени AI-персоны "Крейк"
+    с использованием GPT4Free (g4f).
     """
-
-    strings = {
-        "name": "Gpt4Persona",
-        "persona_name_h": "Имя, от которого будет отвечать AI (например, 'крейк').",
-        "history_limit_h": "Количество последних сообщений для контекста (5-100).",
-        "min_delay_h": "Мин. задержка перед ответом AI (сек).",
-        "max_delay_h": "Макс. задержка перед ответом AI (сек).",
-        "model_h": "Модель для использования. Пример: g4f.models.gpt_4, g4f.models.gpt_3_5_turbo.",
-        "ii_on": "🎭 <b>Режим Gpt4Persona включен.</b>\nТеперь я отвечаю в этом чате как <code>{}</code>.",
-        "ii_off": "🎭 <b>Режим Gpt4Persona выключен.</b>",
-        "processing": "<code>🤔 думаю...</code>",
-        "error_processing": "❌ <b>Произошла ошибка при обработке запроса:</b>\n<code>{}</code>",
-        "history_error": "⚠️ Не удалось загрузить историю чата, отвечаю без контекста.",
-        "not_text": "👀 Я отвечаю только на текстовые сообщения.",
-        "_cmd_doc_ii": "Включить/выключить режим ответов от имени AI в текущем чате.",
-    }
 
     def __init__(self):
         self.config = loader.ModuleConfig(
@@ -49,14 +27,8 @@ class Gpt4PersonaMod(loader.Module):
                 validator=loader.validators.String(),
             ),
             loader.ConfigValue(
-                "model",
-                "gpt-4",
-                lambda: self.strings("model_h"),
-                validator=loader.validators.String(),
-            ),
-            loader.ConfigValue(
                 "history_limit",
-                25,
+                30,
                 lambda: self.strings("history_limit_h"),
                 validator=loader.validators.Integer(minimum=5, maximum=100),
             ),
@@ -72,112 +44,175 @@ class Gpt4PersonaMod(loader.Module):
                 lambda: self.strings("max_delay_h"),
                 validator=loader.validators.Integer(minimum=0, maximum=10),
             ),
+            loader.ConfigValue(
+                "g4f_model",
+                "gpt-3.5-turbo", # Можно попробовать "gpt-4" или другие, если 3.5-turbo не работает
+                lambda: self.strings("g4f_model_h"),
+                validator=loader.validators.String(),
+            ),
         )
-        self.active_chats = {}
+        self.active_chats = {}  # {chat_id: True/False} - для отслеживания активных чатов
 
     async def client_ready(self, client, db):
         self.client = client
         self.db = db
-        self.me = await client.get_me()
         self.active_chats = self.db.get("Gpt4PersonaMod", "active_chats", {})
-        
-        # Правильная регистрация обработчика входящих сообщений
+
+        # Регистрируем обработчик событий для новых входящих сообщений
         self.client.add_event_handler(
             self.on_new_message,
             events.NewMessage(incoming=True, outgoing=False)
         )
 
-    @loader.command()
-    async def ii(self, m: Message):
-        """Включить/выключить режим ответов от имени AI."""
+    strings = {
+        "name": "Gpt4Persona",
+        "persona_name_h": "Имя, от которого будет отвечать AI (например, 'крейк')",
+        "history_limit_h": "Количество последних сообщений для контекста (от 5 до 100).",
+        "min_delay_h": "Минимальная задержка перед ответом AI в секундах.",
+        "max_delay_h": "Максимальная задержка перед ответом AI в секундах.",
+        "g4f_model_h": "Модель g4f для использования (например, 'gpt-3.5-turbo' или 'gpt-4').",
+        "ii_on": "🎭 Режим Gpt4Persona включен в этом чате. Я буду отвечать как {}.",
+        "ii_off": "🎭 Режим Gpt4Persona выключен.",
+        "ii_deleted": "```.ii``` (сообщение удалено)",
+        "processing": "```думаю...```",
+        "error_processing": "❌ Произошла ошибка при обработке запроса: {}",
+        "error_timeout": "❌ Не удалось получить ответ от AI за отведенное время. Попробуйте снова.",
+        "not_text": "Gpt4Persona отвечает только на текстовые сообщения.",
+        "no_history": "Не удалось получить историю диалога для контекста. Отвечаю без нее.",
+        "_cmd_doc_ii": "Включает/выключает режим ответов от имени AI-персоны в текущем чате."
+    }
+
+    strings_ru = {
+        "name": "Gpt4Persona",
+        "persona_name_h": "Имя, от которого будет отвечать AI (например, 'крейк')",
+        "history_limit_h": "Количество последних сообщений для контекста (от 5 до 100).",
+        "min_delay_h": "Минимальная задержка перед ответом AI в секундах.",
+        "max_delay_h": "Максимальная задержка перед ответом AI в секундах.",
+        "g4f_model_h": "Модель g4f для использования (например, 'gpt-3.5-turbo' или 'gpt-4').",
+        "ii_on": "🎭 Режим Gpt4Persona включен в этом чате. Я буду отвечать как {}.",
+        "ii_off": "🎭 Режим Gpt4Persona выключен.",
+        "ii_deleted": "```.ii``` (сообщение удалено)",
+        "processing": "```думаю...```",
+        "error_processing": "❌ Произошла ошибка при обработке запроса: {}",
+        "error_timeout": "❌ Не удалось получить ответ от AI за отведенное время. Попробуйте снова.",
+        "not_text": "Gpt4Persona отвечает только на текстовые сообщения.",
+        "no_history": "Не удалось получить историю диалога для контекста. Отвечаю без нее.",
+        "_cmd_doc_ii": "Включает/выключает режим ответов от имени AI-персоны в текущем чате."
+    }
+
+    @loader.command("ii")
+    async def iicmd(self, m: Message):
+        """Toggle Gpt4Persona for current chat."""
         chat_id = utils.get_chat_id(m)
-        
+        persona_name = self.config["persona_name"]
+
+        # Удаляем сообщение с командой сразу
+        await m.delete()
+        # Отправляем подтверждение об удалении
+        await utils.answer(m, self.strings("ii_deleted"))
+
         if self.active_chats.get(chat_id, False):
             self.active_chats[chat_id] = False
             await utils.answer(m, self.strings("ii_off"))
         else:
             self.active_chats[chat_id] = True
-            persona_name = self.config["persona_name"]
             await utils.answer(m, self.strings("ii_on").format(persona_name))
 
         self.db.set("Gpt4PersonaMod", "active_chats", self.active_chats)
 
-    async def on_new_message(self, event: events.NewMessage.Event):
-        """Обрабатывает новые входящие сообщения."""
+    async def on_new_message(self, event):
         m = event.message
+
+        if not m.is_private and not m.is_group:
+            return
+
         chat_id = utils.get_chat_id(m)
-
-        # --- Основные проверки для предотвращения срабатывания ---
         if not self.active_chats.get(chat_id, False):
+            return  # Режим не активен в этом чате
+
+        # Игнорируем сообщения от самого бота (вашего юзербота Hikka)
+        me = await self.client.get_me()
+        if m.sender_id == me.id:
             return
 
-        if m.sender_id == self.me.id:
+        # Игнорируем саму команду .ii, чтобы избежать петли
+        if m.text and m.text.lower().startswith(".ii"):
             return
 
-        # Игнорируем команды и сообщения без текста
-        if not m.text or m.text.startswith(self.get_prefix()):
+        if not m.text:
+            # Отвечаем только на текстовые сообщения
+            # await utils.answer(m, self.strings("not_text")) # Можно убрать, чтобы не спамить
             return
-            
+
         persona_name = self.config["persona_name"]
         history_limit = self.config["history_limit"]
-        
-        history_string = ""
-        # --- Безопасный сбор истории чата ---
+        min_delay = self.config["min_delay"]
+        max_delay = self.config["max_delay"]
+        g4f_model = self.config["g4f_model"]
+
         try:
+            # Получаем историю чата для контекста
             history_messages = []
-            async for historic_msg in self.client.iter_messages(chat_id, limit=history_limit):
-                # Проверяем, что сообщение не пустое и содержит текст
-                if historic_msg and historic_msg.text:
-                    sender = await historic_msg.get_sender()
-                    sender_name = persona_name if historic_msg.out else (
-                        sender.first_name or sender.username or f"Пользователь_{sender.id}"
-                    )
-                    history_messages.append(f"{sender_name}: {historic_msg.text}")
+            try:
+                async for msg in self.client.iter_messages(chat_id, limit=history_limit):
+                    # Проверяем, что msg.text не None, прежде чем использовать его
+                    if msg.text:
+                        # Определяем имя отправителя
+                        sender_name = persona_name if msg.sender_id == me.id else (msg.sender.first_name or msg.sender.username or f"Пользователь_{msg.sender_id}")
+                        history_messages.append(f"{sender_name}: {msg.text}")
+            except Exception as e:
+                logger.warning(f"Failed to get chat history: {e}")
+                # Если не удалось получить историю, сообщаем об этом и продолжаем без нее
+                await utils.answer(m, self.strings("no_history"))
+                history_messages = [] # Очищаем историю, чтобы не передавать некорректные данные
+
+            # Переворачиваем историю, чтобы старые сообщения были в начале
+            # Telethon.iter_messages возвращает сообщения от новых к старым.
+            # Для контекста AI нам нужна хронологическая последовательность (старые -> новые).
+            history_string = "\n".join(reversed(history_messages)) if history_messages else ""
+
+            # Формируем промпт
+            prompt_parts = []
+            if history_string:
+                prompt_parts.append(f"История диалога:\n{history_string}")
             
-            # Переворачиваем историю для правильного хронологического порядка
-            history_string = "\n".join(reversed(history_messages))
-        except Exception as e:
-            logger.error(f"Failed to get chat history: {e}")
-            await self.client.send_message(chat_id, self.strings("history_error"))
-            # Продолжаем без истории
-
-        # --- Формирование промпта для AI ---
-        prompt = (
-            f"Ты - пользователь Telegram с ником '{persona_name}'. Тебе 18 лет. "
-            f"Ты общаешься в чате. Твоя задача - коротко и ёмко ответить на последнее сообщение "
-            f"с учетом контекста предыдущего диалога. Отвечай всегда с маленькой буквы. "
-            f"Не упоминай, что ты ИИ или ассистент. Будь немного дерзким и неформальным, как обычный парень."
-            f"\n\n--- КОНТЕКСТ ДИАЛОГА ---\n{history_string}\n\n"
-            f"--- ПОСЛЕДНЕЕ СООБЩЕНИЕ, НА КОТОРОЕ НАДО ОТВЕТИТЬ ---\n"
-            f"{m.sender.first_name or 'Пользователь'}: {m.text}"
-        )
-
-        # --- Отправка запроса и получение ответа ---
-        try:
-            # Случайная задержка для имитации человеческого поведения
-            delay = random.uniform(self.config["min_delay"], self.config["max_delay"])
-            await asyncio.sleep(delay)
-            
-            # Отправляем сообщение "думаю..." и сохраняем его для редактирования
-            thinking_message = await utils.answer(m, self.strings("processing"))
-
-            # Асинхронный запрос к g4f
-            response_text = await g4f.ChatCompletion.create_async(
-                model=self.config["model"],
-                messages=[{"role": "user", "content": prompt}],
-                # provider=g4f.Provider.GeekGpt  # Можно указать конкретный, если нужно
+            prompt_parts.append(
+                f"Ты пользователь в телеграм с никнеймом {persona_name}. "
+                f"Отвечай как 18-летний человек, пиши с маленькой буквы. "
+                f"Упоминай никнейм и возраст только если тебя об этом спросят. "
+                f"Твой ответ должен быть коротким и по существу. "
+                f"Ответь на следующее сообщение: {m.text}"
             )
             
-            # Редактируем сообщение "думаю..." на ответ от AI
-            if response_text:
+            final_prompt = "\n\n".join(prompt_parts)
+
+            # Случайная задержка
+            delay = random.uniform(min_delay, max_delay)
+            await asyncio.sleep(delay)
+
+            # Отправляем "думаю..." сообщение
+            thinking_message = await utils.answer(m, self.strings("processing"))
+
+            try:
+                # Отправляем запрос в g4f
+                response = g4f.ChatCompletion.create(
+                    model=g4f_model,
+                    messages=[{"role": "user", "content": final_prompt}],
+                    stream=False, # Не используем стриминг для простоты, если нужно, можно включить
+                    timeout=30 # Таймаут на 30 секунд
+                )
+                response_text = response
+
+                # Редактируем сообщение "думаю..." на ответ от AI
                 await utils.answer(thinking_message, response_text)
-            else:
-                await utils.answer(thinking_message, self.strings("error_processing").format("AI вернул пустой ответ."))
+
+            except asyncio.TimeoutError:
+                await utils.answer(thinking_message, self.strings("error_timeout"))
+            except Exception as e:
+                logger.error(f"Error getting response from g4f: {e}", exc_info=True)
+                await utils.answer(thinking_message, self.strings("error_processing").format(e))
 
         except Exception as e:
-            logger.error(f"Error processing g4f request: {e}", exc_info=True)
-            # Если возникла ошибка, редактируем "думаю..." на сообщение об ошибке
-            if 'thinking_message' in locals():
-                await utils.answer(thinking_message, self.strings("error_processing").format(e))
-            else:
-                await utils.answer(m, self.strings("error_processing").format(e))
+            logger.error(f"Error in Gpt4PersonaMod listener: {e}", exc_info=True)
+            # Отправляем сообщение об ошибке, если что-то пошло не так на более высоком уровне
+            await utils.answer(m, self.strings("error_processing").format(e))
