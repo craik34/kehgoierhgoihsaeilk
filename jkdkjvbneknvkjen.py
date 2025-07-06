@@ -1,12 +1,15 @@
 # meta developer: @modwini
 
-__pip_deps__ = ["g4f"] # <-- Добавьте эту строку!
+__pip_deps__ = ["g4f"] # <-- Правильно! Указываем только корневой пакет "g4f"
 
 import asyncio
 import random
 import logging
 import g4f
+# Эти импорты уже работают, потому что g4f будет установлен
 from g4f.Provider import Liaobots, FreeGpt, Bing 
+
+# ... остальной код модуля
 
 
 
