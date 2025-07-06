@@ -123,8 +123,7 @@ class Gpt4PersonaMod(loader.Module):
     async def on_new_message(self, event):
         m = event.message
 
-        # Проверяем, что сообщение пришло из личного чата или группы/канала
-        # Если это канал, то msg.sender может быть None, но msg.sender_id будет ID канала
+        # Проверяем, что сообщение пришло из личного чата, группы или канала
         if not m.is_private and not m.is_group and not m.is_channel:
             return
 
@@ -159,20 +158,28 @@ class Gpt4PersonaMod(loader.Module):
                     # Проверяем, что сообщение содержит текст и не является None
                     if msg_in_history.text:
                         sender_name = ""
-                        # Пытаемся получить имя отправителя
+                        
+                        # Получаем объект отправителя безопасно
+                        sender = await msg_in_history.get_sender()
+                        
                         if msg_in_history.sender_id == me.id:
                             sender_name = persona_name
-                        elif msg_in_history.sender: # Проверяем, что sender не None
-                            sender_name = msg_in_history.sender.first_name or msg_in_history.sender.username
-                        elif msg_in_history.chat and hasattr(msg_in_history.chat, 'title'): # Для каналов/групп, если sender None
-                            sender_name = msg_in_history.chat.title
+                        elif sender: # Если объект отправителя получен
+                            sender_name = sender.first_name or sender.username
                         
-                        if not sender_name: # Если имя не удалось получить, используем ID
-                            sender_name = f"Пользователь_{msg_in_history.sender_id}"
+                        # Если имя отправителя все еще не определено, пытаемся получить из чата
+                        if not sender_name:
+                            chat_obj = await msg_in_history.get_chat()
+                            if chat_obj and hasattr(chat_obj, 'title'):
+                                sender_name = chat_obj.title
+                            elif msg_in_history.sender_id: # Если есть только ID отправителя
+                                sender_name = f"Пользователь_{msg_in_history.sender_id}"
+                            else: # Крайний случай, если ничего не удалось получить
+                                sender_name = "Неизвестный"
 
                         history_messages.append(f"{sender_name}: {msg_in_history.text}")
             except Exception as e:
-                logger.warning(f"Failed to get chat history: {e}")
+                logger.warning(f"Failed to get chat history: {e}", exc_info=True)
                 await utils.answer(m, self.strings("no_history"))
                 history_messages = [] # Очищаем историю, чтобы не передавать некорректные данные
 
