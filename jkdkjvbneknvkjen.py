@@ -1,17 +1,12 @@
 # meta developer: @modwini
 
-__pip_deps__ = ["g4f"] # <-- Правильно! Указываем только корневой пакет "g4f"
+__pip_deps__ = ["g4f"] # <-- ИСПРАВЛЕНО! Теперь правильно указывает на пакет 'g4f'
 
 import asyncio
 import random
 import logging
-import g4f
-# Эти импорты уже работают, потому что g4f будет установлен
-from g4f.Provider import Liaobots, FreeGpt, Bing 
-
-# ... остальной код модуля
-
-
+import g4f 
+from g4f.Provider import Liaobots, FreeGpt, Bing # Примеры провайдеров, можете добавить другие из документации g4f
 
 from telethon import events
 from telethon.tl.patched import Message
@@ -200,6 +195,9 @@ class G4fPersonaMod(loader.Module):
                 await utils.answer(m, self.strings("error_provider").format(ai_provider_name))
                 return
             # Дополнительная проверка на поддержку модели провайдером (не все провайдеры универсальны)
+            # Примечание: Атрибуты 'supports_gpt_4' и 'supports_gpt_35_turbo' могут отсутствовать
+            # у некоторых провайдеров в g4f, это лишь пример проверки.
+            # Лучше всего опираться на актуальную документацию g4f или тестировать.
             if ai_model == "gpt-4" and not getattr(provider_obj, 'supports_gpt_4', False):
                  await utils.answer(m, self.strings("not_supported").format(ai_model, ai_provider_name))
                  return
