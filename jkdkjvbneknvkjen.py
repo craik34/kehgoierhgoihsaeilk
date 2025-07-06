@@ -10,24 +10,24 @@ import g4f
 logger = logging.getLogger(__name__)
 
 @loader.tds
-class Gpt4PersonaTyping(loader.Module):
-    """AI-персона Крэйк с памятью и реалистичной подачей под Telegram-юзера."""
+class Gpt4PersonaRealUserMod(loader.Module):
+    """AI-персона "Крейк" с реалистичным поведением Telegram-пользователя."""
 
     strings = {
-        "name": "Gpt4PersonaTyping",
-        "activated": "🟢 Крэйк активен в этом чате.",
-        "deactivated": "🔴 Крэйк отключён.",
+        "name": "Gpt4PersonaRealUser",
+        "ii_on": "✅ Крейк активен в этом чате.",
+        "ii_off": "❌ Крейк отключён.",
         "error": "❌ Ошибка: {}",
-        "timeout": "⚠️ Крэйк задумался слишком долго.",
+        "timeout": "❌ AI не ответил вовремя.",
     }
 
     def __init__(self):
         self.config = loader.ModuleConfig(
-            loader.ConfigValue("persona_name", "крейк", lambda: "Имя персонажа."),
-            loader.ConfigValue("g4f_model", "gpt-4", lambda: "g4f модель (gpt-4, gpt-3.5-turbo и т.д.)"),
-            loader.ConfigValue("history_limit", 20, lambda: "Сколько сообщений сохранять в истории."),
-            loader.ConfigValue("min_delay", 1, lambda: "Мин. задержка перед ответом."),
-            loader.ConfigValue("max_delay", 3, lambda: "Макс. задержка перед ответом."),
+            loader.ConfigValue("persona_name", "крейк", lambda: "Имя AI-персоны."),
+            loader.ConfigValue("g4f_model", "gpt-4", lambda: "Модель g4f (gpt-4, gpt-3.5-turbo и т.д.)"),
+            loader.ConfigValue("history_depth", 20, lambda: "Сколько сообщений хранить в истории."),
+            loader.ConfigValue("min_delay", 1, lambda: "Мин. задержка перед ответом (сек)."),
+            loader.ConfigValue("max_delay", 3, lambda: "Макс. задержка перед ответом (сек)."),
         )
         self.active_chats = {}
         self.chat_histories = {}
@@ -35,8 +35,8 @@ class Gpt4PersonaTyping(loader.Module):
     async def client_ready(self, client, db):
         self.client = client
         self.db = db
-        self.active_chats = db.get("Gpt4PersonaTyping", "active_chats", {})
-        self.chat_histories = db.get("Gpt4PersonaTyping", "chat_histories", {})
+        self.active_chats = db.get("Gpt4PersonaRealUserMod", "active_chats", {})
+        self.chat_histories = db.get("Gpt4PersonaRealUserMod", "chat_histories", {})
         self.client.add_event_handler(self.on_new_message, events.NewMessage(incoming=True, outgoing=False))
 
     @loader.command("ii")
@@ -45,11 +45,11 @@ class Gpt4PersonaTyping(loader.Module):
         await m.delete()
         if self.active_chats.get(chat_id, False):
             self.active_chats[chat_id] = False
-            await utils.answer(m, self.strings("deactivated"))
+            await utils.answer(m, self.strings("ii_off"))
         else:
             self.active_chats[chat_id] = True
-            await utils.answer(m, self.strings("activated"))
-        self.db.set("Gpt4PersonaTyping", "active_chats", self.active_chats)
+            await utils.answer(m, self.strings("ii_on"))
+        self.db.set("Gpt4PersonaRealUserMod", "active_chats", self.active_chats)
 
     async def on_new_message(self, event):
         m = event.message
@@ -63,57 +63,55 @@ class Gpt4PersonaTyping(loader.Module):
         if m.sender_id == me.id:
             return
 
-        name = self.config["persona_name"]
-        model = self.config["g4f_model"]
-        max_history = self.config["history_limit"]
+        persona_name = self.config["persona_name"]
+        g4f_model = self.config["g4f_model"]
+        history_depth = self.config["history_depth"]
         min_delay = self.config["min_delay"]
         max_delay = self.config["max_delay"]
 
-        # История чата
+        # История
         self.chat_histories.setdefault(chat_id, [])
-        self.chat_histories[chat_id].append({"role": "user", "content": m.text})
-        self.chat_histories[chat_id] = self.chat_histories[chat_id][-max_history:]
+        self.chat_histories[chat_id].append(f"Пользователь: {m.text}")
+        if len(self.chat_histories[chat_id]) > history_depth:
+            self.chat_histories[chat_id] = self.chat_histories[chat_id][-history_depth:]
 
-        # Промт-инструкция
-        full_dialog = "\n".join([f"{msg['role']}: {msg['content']}" for msg in self.chat_histories[chat_id]])
-        system_prompt = (
-            f"{full_dialog}\n\n\n"
-            f"ты - {name}, пользователь в телеграм которому 18 лет (упоминай только если спросят), "
-            f"отвечай коротко и как пользователь в телеграм на вопрос: {m.text}"
-        )
-
-        try:
-            # Эмуляция "печатает…"
-            typing = await m.respond("⌨️ печатает...")
+        # Имитируем "печатает..."
+        async with self.client.action(m.chat_id, "typing"):
             await asyncio.sleep(random.uniform(min_delay, max_delay))
 
-            response = g4f.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt}
-                ],
-                stream=False,
-                timeout=30,
-            )
+            try:
+                # Создание полного промта
+                prompt = "\n".join(self.chat_histories[chat_id]) + f"""
 
-            if isinstance(response, str):
-                response_text = response.strip()
-            elif isinstance(response, dict) and "choices" in response:
-                response_text = response["choices"][0]["message"]["content"].strip()
-            else:
-                response_text = "?"
+ты — {persona_name}, пользователь в телеграм, которому 18 лет (упоминай только если спросят). 
+Отвечай коротко и как обычный пользователь Telegram.
+На вопрос: {m.text}
+"""
 
-            # Сохраняем ответ в историю
-            self.chat_histories[chat_id].append({"role": "assistant", "content": response_text})
-            self.chat_histories[chat_id] = self.chat_histories[chat_id][-max_history:]
+                # Запрос к g4f
+                response = g4f.ChatCompletion.create(
+                    model=g4f_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    stream=False,
+                    timeout=30,
+                )
 
-            await typing.edit(response_text)
+                if isinstance(response, str):
+                    reply = response.strip()
+                elif isinstance(response, dict) and "choices" in response:
+                    reply = response["choices"][0]["message"]["content"].strip()
+                else:
+                    reply = "⚠️ Что-то не так с ответом AI."
 
-        except asyncio.TimeoutError:
-            await m.respond(self.strings("timeout"))
-        except Exception as e:
-            logger.exception("Ошибка в Gpt4PersonaTyping")
-            await m.respond(self.strings("error").format(str(e)))
+                # Добавляем в историю
+                self.chat_histories[chat_id].append(f"{persona_name}: {reply}")
+                await m.reply(reply)
+
+            except asyncio.TimeoutError:
+                await m.reply(self.strings("timeout"))
+            except Exception as e:
+                logger.error("Gpt4PersonaRealUserMod Error", exc_info=True)
+                await m.reply(self.strings("error").format(str(e)))
 
         # Сохраняем историю
-        self.db.set("Gpt4PersonaTyping", "chat_histories", self.chat_histories)
+        self.db.set("Gpt4PersonaRealUserMod", "chat_histories", self.chat_histories)
