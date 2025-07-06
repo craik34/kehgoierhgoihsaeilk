@@ -1,26 +1,19 @@
 # meta developer: @modwini
-
 import asyncio
 import random
 import logging
 from hikka import loader, utils
 from telethon import events
 from telethon.tl.patched import Message
-
-# Импорт библиотеки g4f
 import g4f
-
-# Опционально: раскомментируйте для включения отладочного логирования g4f
-# g4f.debug.logging = True
-# g4f.check_version = False # Отключить автоматическую проверку версии g4f
 
 logger = logging.getLogger(__name__)
 
 @loader.tds
-class Gpt4PersonaMod(loader.Module): # Название класса изменено для ясности
+class Gpt4PersonaMod(loader.Module):
     """
-    Модуль для Hikka, который позволяет пользователю отвечать в чате от имени AI-персоны
-    с использованием GPT4Free (g4f).
+    Модуль для Hikka, который позволяет пользователю отвечать в чате от имени AI-персоны "Крейк"
+    с использованием G4F (GPT-4).
     """
 
     def __init__(self):
@@ -50,17 +43,11 @@ class Gpt4PersonaMod(loader.Module): # Название класса измен�
                 validator=loader.validators.Integer(minimum=0, maximum=10),
             ),
             loader.ConfigValue(
-                "ai_model",
-                "gpt-4", # По умолчанию используем 'gpt-4' как запрошено
-                lambda: self.strings("ai_model_h"),
+                "model_name",
+                "gpt-4",  # Используем gpt-4 по умолчанию, как запрашивалось
+                lambda: self.strings("model_name_h"),
                 validator=loader.validators.String(),
-            ),
-            loader.ConfigValue(
-                "ai_timeout",
-                45, # Увеличиваем таймаут, так как бесплатные API могут быть медленными
-                lambda: self.strings("ai_timeout_h"),
-                validator=loader.validators.Integer(minimum=10, maximum=120),
-            ),
+            )
         )
         self.active_chats = {}  # {chat_id: True/False} - для отслеживания активных чатов
 
@@ -69,196 +56,174 @@ class Gpt4PersonaMod(loader.Module): # Название класса измен�
         self.db = db
         self.active_chats = self.db.get("Gpt4PersonaMod", "active_chats", {})
 
-        # Регистрируем обработчик событий для новых входящих сообщений
         self.client.add_event_handler(
             self.on_new_message,
-            events.NewMessage(incoming=True, outgoing=False) # Слушаем только чужие сообщения
+            events.NewMessage(incoming=True, outgoing=False)
         )
 
     strings = {
-        "name": "GPT4Persona", # Обновленное название модуля
+        "name": "Gpt4Persona",
         "persona_name_h": "Имя, от которого будет отвечать AI (например, 'крейк')",
         "history_limit_h": "Количество последних сообщений для контекста (от 5 до 100).",
         "min_delay_h": "Минимальная задержка перед ответом AI в секундах.",
         "max_delay_h": "Максимальная задержка перед ответом AI в секундах.",
-        "ai_model_h": "Модель AI для использования (например, 'gpt-4', 'gpt-3.5-turbo', 'default'). Убедитесь, что g4f поддерживает ее.",
-        "ai_timeout_h": "Таймаут для ответа AI в секундах.",
-        "ii_on": "🎭 Режим GPT4Persona включен в этом чате. Я буду отвечать как {}.",
-        "ii_off": "🎭 Режим GPT4Persona выключен.",
-        "ii_deleted": "```.ii``` (сообщение удалено)",
+        "model_name_h": "Имя модели G4F для использования (например, 'gpt-4', 'gpt-3.5-turbo').",
+        "ii_on": "🎭 Режим Gpt4Persona включен в этом чате. Я буду отвечать как {}.",
+        "ii_off": "🎭 Режим Gpt4Persona выключен.",
+        "ii_deleted": "`⏳ .ii` (сообщение удалено)",
         "processing": "```думаю...```",
         "error_processing": "❌ Произошла ошибка при обработке запроса: {}",
         "error_timeout": "❌ Не удалось получить ответ от AI за отведенное время. Попробуйте снова.",
-        "not_text": "GPT4Persona отвечает только на текстовые сообщения.",
-        "g4f_not_working": "❌ G4F Error: Не удалось получить ответ от AI. Возможно, нет рабочих провайдеров для выбранной модели ({}) или есть проблемы с доступом к free-API. Попробуйте другую модель или позже.",
+        "not_text": "Gpt4Persona отвечает только на текстовые сообщения.",
         "_cmd_doc_ii": "Включает/выключает режим ответов от имени AI-персоны в текущем чате."
     }
 
-    strings_ru = { # Русский перевод строк
-        "name": "GPT4Persona",
+    strings_ru = {
+        "name": "Gpt4Persona",
         "persona_name_h": "Имя, от которого будет отвечать AI (например, 'крейк')",
         "history_limit_h": "Количество последних сообщений для контекста (от 5 до 100).",
         "min_delay_h": "Минимальная задержка перед ответом AI в секундах.",
         "max_delay_h": "Максимальная задержка перед ответом AI в секундах.",
-        "ai_model_h": "Модель AI для использования (например, 'gpt-4', 'gpt-3.5-turbo', 'default'). Убедитесь, что g4f поддерживает ее.",
-        "ai_timeout_h": "Таймаут для ответа AI в секундах.",
-        "ii_on": "🎭 Режим GPT4Persona включен в этом чате. Я буду отвечать как {}.",
-        "ii_off": "🎭 Режим GPT4Persona выключен.",
-        "ii_deleted": "```.ii``` (сообщение удалено)",
+        "model_name_h": "Имя модели G4F для использования (например, 'gpt-4', 'gpt-3.5-turbo').",
+        "ii_on": "🎭 Режим Gpt4Persona включен в этом чате. Я буду отвечать как {}.",
+        "ii_off": "🎭 Режим Gpt4Persona выключен.",
+        "ii_deleted": "`⏳ .ii` (сообщение удалено)",
         "processing": "```думаю...```",
         "error_processing": "❌ Произошла ошибка при обработке запроса: {}",
         "error_timeout": "❌ Не удалось получить ответ от AI за отведенное время. Попробуйте снова.",
-        "not_text": "GPT4Persona отвечает только на текстовые сообщения.",
-        "g4f_not_working": "❌ G4F Error: Не удалось получить ответ от AI. Возможно, нет рабочих провайдеров для выбранной модели ({}) или есть проблемы с доступом к free-API. Попробуйте другую модель или позже.",
+        "not_text": "Gpt4Persona отвечает только на текстовые сообщения.",
         "_cmd_doc_ii": "Включает/выключает режим ответов от имени AI-персоны в текущем чате."
     }
 
     @loader.command("ii")
     async def iicmd(self, m: Message):
-        """Включает/выключает режим AI-персоны для текущего чата."""
+        """Toggle Gpt4 persona for current chat."""
         chat_id = utils.get_chat_id(m)
         persona_name = self.config["persona_name"]
-        
-        # Определяем новое состояние
-        is_active_now = not self.active_chats.get(chat_id, False)
 
-        # Обновляем и сохраняем состояние
-        self.active_chats[chat_id] = is_active_now
+        # Отправляем сообщение-подтверждение ДО удаления, чтобы избежать MessageIdInvalidError
+        status_message = await utils.answer(m, self.strings("ii_deleted"))
+        # Теперь удаляем исходное сообщение
+        await m.delete()
+
+        if self.active_chats.get(chat_id, False):
+            self.active_chats[chat_id] = False
+            await utils.answer(status_message, self.strings("ii_off"))
+        else:
+            self.active_chats[chat_id] = True
+            await utils.answer(status_message, self.strings("ii_on").format(persona_name))
+
         self.db.set("Gpt4PersonaMod", "active_chats", self.active_chats)
 
-        # Редактируем сообщение с командой, чтобы показать, что оно "удалено",
-        # затем удаляем его полностью, чтобы избежать MessageIdInvalidError.
-        try:
-            await m.edit(self.strings("ii_deleted"))
-            await asyncio.sleep(1) # Короткая задержка, чтобы пользователь увидел сообщение
-            await m.delete()
-        except Exception as e:
-            logger.warning(f"Не удалось отредактировать/удалить сообщение команды: {e}")
-            # Если редактирование/удаление не удалось, просто продолжаем отправлять статусное сообщение
-
-        # Отправляем статусное сообщение как новое сообщение в чат
-        status_message = self.strings("ii_on").format(persona_name) if is_active_now else self.strings("ii_off")
-        await self.client.send_message(chat_id, status_message)
-
-
     async def on_new_message(self, event):
-        m = event.message # Получаем объект Message из event
+        m = event.message
 
-        # Игнорируем сообщения не из приватных чатов или групп
         if not m.is_private and not m.is_group:
             return
 
         chat_id = utils.get_chat_id(m)
-        # Если режим не активен в этом чате, выходим
         if not self.active_chats.get(chat_id, False):
-            return
+            return  # Режим не активен в этом чате
 
-        # Игнорируем сообщения от самого юзербота (владельца)
         me = await self.client.get_me()
         if m.sender_id == me.id:
-            return
+            return # Игнорируем сообщения от самого юзербота
 
-        # Игнорируем саму команду .ii, чтобы избежать бесконечного цикла
-        if m.text and m.text.lower().startswith(".ii"):
-            return
-
-        # Отвечаем только на текстовые сообщения
+        # Проверяем, что сообщение является текстовым, и игнорируем команды .ii
         if not m.text:
-            await m.reply(self.strings("not_text"))
-            return
+            return # Игнорируем нетекстовые сообщения
+        if m.text and m.text.startswith(self.get_prefix() + "ii"): # Используем get_prefix() для проверки команды
+            return # Игнорируем саму команду .ii, чтобы избежать петли
 
         persona_name = self.config["persona_name"]
         history_limit = self.config["history_limit"]
         min_delay = self.config["min_delay"]
         max_delay = self.config["max_delay"]
-        ai_model = self.config["ai_model"]
-        ai_timeout = self.config["ai_timeout"]
+        model_name = self.config["model_name"]
 
         try:
             # Получаем историю чата для контекста
-            history_messages = []
-            # Используем iter_messages для получения сообщений из чата
-            async for msg_hist in self.client.iter_messages(chat_id, limit=history_limit):
-                if msg_hist.text:
-                    sender = await msg_hist.get_sender() # Получаем информацию об отправителе
-                    # Определяем имя отправителя для истории
-                    sender_name = persona_name if sender and sender.id == me.id else (sender.first_name or sender.username or f"Пользователь_{msg_hist.sender_id}")
-                    history_messages.append(f"{sender_name}: {msg_hist.text}")
+            history_messages_list = []
+            # Используем reversed() для правильного порядка (старые -> новые)
+            async for msg in self.client.iter_messages(chat_id, limit=history_limit):
+                if msg.text: # Убедимся, что сообщение содержит текст, чтобы избежать AttributeError
+                    sender_entity = await msg.get_sender() # Получаем объект отправителя
+                    if sender_entity:
+                        sender_name = persona_name if msg.sender_id == me.id else (sender_entity.first_name or sender_entity.username or f"Пользователь_{msg.sender_id}")
+                        history_messages_list.append(f"{sender_name}: {msg.text}")
+                    else:
+                        # Если sender_entity None (редко, но бывает), используем ID
+                        sender_name = persona_name if msg.sender_id == me.id else f"Пользователь_{msg.sender_id}"
+                        history_messages_list.append(f"{sender_name}: {msg.text}")
+
+            # G4F ожидает список словарей для истории
+            messages_for_g4f = []
+            for item in history_messages_list:
+                if item.startswith(f"{persona_name}:"):
+                    messages_for_g4f.append({"role": "assistant", "content": item.replace(f"{persona_name}: ", "")})
+                else:
+                    # Извлекаем имя пользователя и его сообщение
+                    parts = item.split(": ", 1)
+                    if len(parts) == 2:
+                        user_name = parts[0]
+                        user_content = parts[1]
+                        messages_for_g4f.append({"role": "user", "content": f"{user_name}: {user_content}"})
+                    else:
+                        messages_for_g4f.append({"role": "user", "content": item}) # Fallback
+
+            # Добавляем текущее сообщение пользователя в конец истории
+            current_sender_entity = await m.get_sender()
+            current_sender_name = current_sender_entity.first_name or current_sender_entity.username or f"Пользователь_{m.sender_id}"
+            messages_for_g4f.append({"role": "user", "content": f"{current_sender_name}: {m.text}"})
+
+            # Добавляем системное сообщение для персоны
+            messages_for_g4f.insert(0, {
+                "role": "system",
+                "content": f"Ты пользователь телеграм с никнеймом {persona_name}. Отвечай как 18-летний человек, "
+                           f"пиши с маленькой буквы. Упоминай никнейм и возраст, только если тебя об этом спросят. "
+                           f"Коротко отвечай на последний вопрос в диалоге, соблюдая стиль."
+            })
             
-            # Переворачиваем историю, чтобы старые сообщения были в начале (хронологический порядок)
-            history_string = "\n".join(reversed(history_messages))
-
-            # Формируем промпт для AI с учетом persona и истории диалога
-            prompt_content = (
-                f"Ты — дружелюбный пользователь Telegram с никнеймом {persona_name}. "
-                f"Твой возраст — 18 лет, и ты общаешься с другими пользователями. "
-                f"Отвечай кратко и используй строчные буквы, если это уместно для непринужденного общения. "
-                f"Упоминай свой никнейм или возраст, только если тебя об этом прямо спросят. "
-                f"Вот история диалога для контекста:\n\n{history_string}\n\n"
-                f"Теперь ответь на последнее сообщение: {m.text}"
-            )
-
-            # Случайная задержка перед обработкой и отправкой ответа, чтобы имитировать "думающего" человека
             delay = random.uniform(min_delay, max_delay)
             await asyncio.sleep(delay)
 
-            # Отправляем сообщение "думаю..." и сохраняем его ссылку, чтобы потом отредактировать
-            thinking_message = await m.reply(self.strings("processing"))
+            thinking_message = await utils.answer(m, self.strings("processing"))
 
             try:
-                # Подготавливаем список сообщений для g4f.ChatCompletion.create
-                # g4f ожидает список словарей с 'role' и 'content'
-                g4f_messages = [{"role": "user", "content": prompt_content}]
-
-                # Выполняем вызов g4f API
-                full_response_text = ""
-                response_generator = g4f.ChatCompletion.create(
-                    model=ai_model, # Используем модель AI, указанную в конфигурации (например, 'gpt-4')
-                    messages=g4f_messages,
-                    stream=True, # Включаем потоковую передачу для лучшего пользовательского опыта
-                    timeout=ai_timeout, # Используем таймаут из конфигурации
+                # Отправляем запрос в G4F
+                response = ""
+                # G4F.ChatCompletion.create может вернуть строку или итератор, если stream=True.
+                # Если модель не поддерживает стриминг, она вернет сразу строку.
+                # Поэтому обрабатываем оба случая.
+                g4f_response = g4f.ChatCompletion.create(
+                    model=model_name,
+                    messages=messages_for_g4f,
+                    stream=True, # Попробуем стриминг
+                    # proxy="http://host:port", # Если нужен прокси, можно добавить сюда
+                    # timeout=60 # Таймаут по умолчанию 120, можно изменить
                 )
-
-                # Потоково отправляем ответ обратно в Telegram, редактируя сообщение "думаю..."
-                last_edited_text = ""
-                # Обрабатываем каждый фрагмент ответа
-                async for message_chunk in response_generator:
-                    if message_chunk and message_chunk != "[DONE]": # Игнорируем пустые фрагменты и сигнал [DONE]
-                        full_response_text += message_chunk
-                        # Редактируем сообщение периодически для отображения прогресса
-                        # (например, каждые 50 символов или если текст очень короткий)
-                        if len(full_response_text) - len(last_edited_text) > 50 or len(full_response_text) < 20: 
-                            try:
-                                await thinking_message.edit(full_response_text)
-                                last_edited_text = full_response_text
-                            except Exception as edit_e:
-                                logger.warning(f"Ошибка при редактировании сообщения во время стриминга: {edit_e}")
-                                # Если редактирование не удалось, продолжаем накапливать текст
                 
-                # Проверяем, получили ли мы хоть какой-то ответ
-                if not full_response_text.strip():
-                    raise ValueError(self.strings("g4f_not_working").format(ai_model))
-
-                # Финальное редактирование сообщения с полным ответом
-                await thinking_message.edit(full_response_text)
-
-            except asyncio.TimeoutError:
-                # Обработка таймаута
-                await thinking_message.edit(self.strings("error_timeout"))
-            except Exception as e:
-                # Обработка ошибок, специфичных для g4f или общих
-                logger.error(f"Ошибка при получении ответа от g4f: {e}", exc_info=True)
-                if "Model not found" in str(e) or "No provider" in str(e) or "Rate limit" in str(e) or "Failed to connect" in str(e):
-                    # Более информативное сообщение, если проблема с провайдерами g4f
-                    error_message_to_send = self.strings("g4f_not_working").format(ai_model)
+                if isinstance(g4f_response, str):
+                    response = g4f_response
                 else:
-                    error_message_to_send = self.strings("error_processing").format(e)
-                await thinking_message.edit(error_message_to_send)
+                    for message_chunk in g4f_response:
+                        response += message_chunk
+                        # Можно добавить небольшой таймаут для плавности обновления
+                        # await asyncio.sleep(0.05) 
+                        # await utils.answer(thinking_message, response) # Обновлять сообщение по мере получения
+
+                await utils.answer(thinking_message, response)
+
+            except Exception as e:
+                logger.error(f"Error getting response from G4F: {e}", exc_info=True)
+                if "Model not found" in str(e):
+                    error_msg = f"❌ Ошибка: Модель '{model_name}' не найдена или не поддерживается. Попробуйте другую модель в конфиге."
+                elif "timeout" in str(e).lower():
+                    error_msg = self.strings("error_timeout")
+                else:
+                    error_msg = self.strings("error_processing").format(e)
+                await utils.answer(thinking_message, error_msg)
 
         except Exception as e:
-            # Обработка ошибок, произошедших вне блока вызова g4f (например, при получении истории)
-            logger.error(f"Ошибка в слушателе Gpt4PersonaMod (внешний блок): {e}", exc_info=True)
-            try:
-                await m.reply(self.strings("error_processing").format(e))
-            except Exception as reply_e:
-                logger.error(f"Не удалось отправить ответ с ошибкой: {reply_e}", exc_info=True)
+            logger.error(f"Error in Gpt4PersonaMod listener: {e}", exc_info=True)
+            await utils.answer(m, self.strings("error_processing").format(e))
