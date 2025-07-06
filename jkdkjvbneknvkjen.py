@@ -123,7 +123,9 @@ class Gpt4PersonaMod(loader.Module):
     async def on_new_message(self, event):
         m = event.message
 
-        if not m.is_private and not m.is_group:
+        # Проверяем, что сообщение пришло из личного чата или группы/канала
+        # Если это канал, то msg.sender может быть None, но msg.sender_id будет ID канала
+        if not m.is_private and not m.is_group and not m.is_channel:
             return
 
         chat_id = utils.get_chat_id(m)
@@ -141,7 +143,6 @@ class Gpt4PersonaMod(loader.Module):
 
         if not m.text:
             # Отвечаем только на текстовые сообщения
-            # await utils.answer(m, self.strings("not_text")) # Можно убрать, чтобы не спамить
             return
 
         persona_name = self.config["persona_name"]
@@ -154,21 +155,28 @@ class Gpt4PersonaMod(loader.Module):
             # Получаем историю чата для контекста
             history_messages = []
             try:
-                async for msg in self.client.iter_messages(chat_id, limit=history_limit):
-                    # Проверяем, что msg.text не None, прежде чем использовать его
-                    if msg.text:
-                        # Определяем имя отправителя
-                        sender_name = persona_name if msg.sender_id == me.id else (msg.sender.first_name or msg.sender.username or f"Пользователь_{msg.sender_id}")
-                        history_messages.append(f"{sender_name}: {msg.text}")
+                async for msg_in_history in self.client.iter_messages(chat_id, limit=history_limit):
+                    # Проверяем, что сообщение содержит текст и не является None
+                    if msg_in_history.text:
+                        sender_name = ""
+                        # Пытаемся получить имя отправителя
+                        if msg_in_history.sender_id == me.id:
+                            sender_name = persona_name
+                        elif msg_in_history.sender: # Проверяем, что sender не None
+                            sender_name = msg_in_history.sender.first_name or msg_in_history.sender.username
+                        elif msg_in_history.chat and hasattr(msg_in_history.chat, 'title'): # Для каналов/групп, если sender None
+                            sender_name = msg_in_history.chat.title
+                        
+                        if not sender_name: # Если имя не удалось получить, используем ID
+                            sender_name = f"Пользователь_{msg_in_history.sender_id}"
+
+                        history_messages.append(f"{sender_name}: {msg_in_history.text}")
             except Exception as e:
                 logger.warning(f"Failed to get chat history: {e}")
-                # Если не удалось получить историю, сообщаем об этом и продолжаем без нее
                 await utils.answer(m, self.strings("no_history"))
                 history_messages = [] # Очищаем историю, чтобы не передавать некорректные данные
 
             # Переворачиваем историю, чтобы старые сообщения были в начале
-            # Telethon.iter_messages возвращает сообщения от новых к старым.
-            # Для контекста AI нам нужна хронологическая последовательность (старые -> новые).
             history_string = "\n".join(reversed(history_messages)) if history_messages else ""
 
             # Формируем промпт
@@ -198,8 +206,8 @@ class Gpt4PersonaMod(loader.Module):
                 response = g4f.ChatCompletion.create(
                     model=g4f_model,
                     messages=[{"role": "user", "content": final_prompt}],
-                    stream=False, # Не используем стриминг для простоты, если нужно, можно включить
-                    timeout=30 # Таймаут на 30 секунд
+                    stream=False,
+                    timeout=30
                 )
                 response_text = response
 
@@ -214,5 +222,4 @@ class Gpt4PersonaMod(loader.Module):
 
         except Exception as e:
             logger.error(f"Error in Gpt4PersonaMod listener: {e}", exc_info=True)
-            # Отправляем сообщение об ошибке, если что-то пошло не так на более высоком уровне
             await utils.answer(m, self.strings("error_processing").format(e))
