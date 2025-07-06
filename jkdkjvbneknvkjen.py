@@ -1,10 +1,14 @@
 # meta developer: @modwini
 
+__pip_deps__ = ["g4f"] # <-- Добавьте эту строку!
+
 import asyncio
 import random
 import logging
-import g4f # Импортируем g4f
-from g4f.Provider import Liaobots, FreeGpt, Bing # Примеры провайдеров, можете добавить другие из документации g4f
+import g4f
+from g4f.Provider import Liaobots, FreeGpt, Bing 
+
+
 
 from telethon import events
 from telethon.tl.patched import Message
