@@ -1,4 +1,8 @@
 
+
+# requires: google-genai ааааа
+# meta developer: @kreik_dev_mods # Можете изменить на свой ник
+
 import asyncio
 import logging
 import collections
@@ -37,8 +41,9 @@ class GeminiAutoResponderMod(loader.Module):
 
     def __init__(self):
         self.name = "Gemini Автоответчик"
-        # self.db будет инициализирован Hikka автоматически
-
+        # Hikka САМА инициализирует self.db после __init__
+        # Поэтому мы не должны ее здесь устанавливать в None или пытаться получить
+        
         # Словарь для хранения истории диалогов по chat_id
         # Используем collections.deque для автоматического ограничения истории
         self.histories = collections.defaultdict(
@@ -50,10 +55,8 @@ class GeminiAutoResponderMod(loader.Module):
         """
         Инициализация клиента Gemini при готовности Hikka.
         """
-        # Hikka сама передает объект базы данных в self.db.
-        # Нет необходимости вызывать self.get_db() или self.db = None в __init__.
-        # Просто используем self.db
-
+        # self.db уже доступен здесь, его не нужно получать.
+        
         if not GEMINI_API_KEY or GEMINI_API_KEY == "ВАШ_API_КЛЮЧ_GEMINI":
             logger.error("Gemini API Key is not set or is default. Gemini auto-responder will not work.")
             return
@@ -84,11 +87,12 @@ class GeminiAutoResponderMod(loader.Module):
         await message.delete()
 
         # Получаем текущее состояние и переключаем его
+        # self.db доступен здесь
         is_active = self.db.get("gemini_active", False)
         self.db.set("gemini_active", not is_active)
 
         status_text = "включен" if not is_active else "выключен"
-
+        
         # Отправляем временное сообщение о статусе и удаляем его через 2 секунды
         status_message = await utils.answer_messages(message, f"🤖 Автоответчик Gemini {status_text}!")
         await asyncio.sleep(2)
@@ -100,17 +104,18 @@ class GeminiAutoResponderMod(loader.Module):
         Наблюдатель для входящих текстовых сообщений.
         """
         # Проверяем, активен ли автоответчик
+        # self.db доступен здесь
         if not self.db.get("gemini_active", False):
             return
 
-        # Игнорируем нетекстовые сообщения (фото, видео, стикеры, гифки, опросы)
+        # Игнорируем нетекстовые сообщения
         if not message.text:
             return
 
         # Игнорируем свои же сообщения
         if message.out:
             return
-
+            
         # Игнорируем сообщения, которые начинаются с префикса команд Hikka
         # (чтобы не обрабатывать другие команды как вопросы к Gemini)
         if message.text.startswith(self.get_prefix()):
@@ -121,10 +126,8 @@ class GeminiAutoResponderMod(loader.Module):
             return
 
         # Получаем имя отправителя для истории
-        sender_name = "Неизвестный"
-        if message.sender:
-            sender_name = message.sender.first_name or message.sender.username or "Неизвестный"
-
+        sender_name = message.sender.first_name or message.sender.username or "Неизвестный"
+        
         # Сохраняем текущее сообщение в историю
         await self._save_message_to_history(message.chat_id, sender_name, message.text)
 
@@ -132,25 +135,21 @@ class GeminiAutoResponderMod(loader.Module):
         formatted_history = await self._get_formatted_history(message.chat_id)
 
         # Формируем системную инструкцию (persona)
-        # Отключена в generate_content для более явного управления через contents
-        # system_instruction = (
-        #     f"Думай что ты пользователь в телеграм с никнеймом {MY_NICKNAME} "
-        #     "отвечай как 18 летний человек и пиши с маленькой буквы "
-        #     "(упоминай никнейм и возраст только если спросят)."
-        # )
+        system_instruction = (
+            f"Думай что ты пользователь в телеграм с никнеймом {MY_NICKNAME} "
+            "отвечай как 18 летний человек и пиши с маленькой буквы "
+            "(упоминай никнейм и возраст только если спросят)."
+        )
 
         # Формируем основной контент для запроса
         user_question = message.text
         full_prompt_content = (
-            f"(История диалога: {MAX_HISTORY_MESSAGES} последних сообщений из чата или личных сообщений то есть например там никнейм: и {MY_NICKNAME}: то есть я)\n\n"
-            f"Думай что ты пользователь в телеграм с никнеймом {MY_NICKNAME} отвечай как 18 летний человек и пиши с маленькой буквы "
-            f"(упоминай никнейм и возраст только если спросят) и ты должен коротко ответить на этот вопрос: {user_question}\n"
-            f"История диалога: \n{formatted_history}" # Помещаем историю в конец, как в вашем примере промпта
+            f"История диалога:\n{formatted_history}\n\n"
+            f"Ты должен коротко ответить на этот вопрос: {user_question}"
         )
 
         try:
             # Отправляем запрос в Gemini API
-            # Если thinking_budget=0 вызывает ошибку, удалите эту строку или закомментируйте
             response = await asyncio.to_thread( # Используем asyncio.to_thread для блокирующих вызовов
                 self.gemini_model.generate_content,
                 contents=full_prompt_content,
@@ -163,11 +162,11 @@ class GeminiAutoResponderMod(loader.Module):
                     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
                     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
                 ],
-                #thinking_config=types.ThinkingConfig(thinking_budget=0) # Отключаем "мышление" для более быстрых ответов (может быть несовместимо с lite-preview)
+                #thinking_config=types.ThinkingConfig(thinking_budget=0) # Отключаем "мышление" для более быстрых ответов
             )
-
+            
             generated_text = response.text
-
+            
             # Сохраняем ответ Gemini в историю
             await self._save_message_to_history(message.chat_id, MY_NICKNAME, generated_text)
 
